@@ -5,6 +5,7 @@ using FluentValidation;
 using MediatR;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -31,23 +32,21 @@ namespace LightWeightPerformanceTesting.API.Features.Dashboards
 
         public class Handler : IRequestHandler<Request, Response>
         {
-            private readonly IEventStore _eventStore;
+            private readonly IRepository _repository;
             
-			public Handler(IEventStore eventStore) => _eventStore = eventStore;
+            public Handler(IRepository repository) => _repository = repository;
 
             public Task<Response> Handle(Request request, CancellationToken cancellationToken)
             {
-                var dashboard = _eventStore.Query<Dashboard>(request.DashboardId);
-                var dashboardCards = new List<DashboardCardDto>();
-
-                foreach (var dashboardCardId in dashboard.DashboardCardIds)
-                {
-                    dashboardCards.Add(DashboardCardDto.FromDashboardCard(_eventStore.Query<DashboardCard>(dashboardCardId)));
-                }
-
+                var dashboard = _repository.Query<Dashboard>(request.DashboardId);
+                var dashboardDto = DashboardDto.FromDashboard(dashboard);
+                dashboardDto.DashboardCards = _repository
+                    .Query<DashboardCard>(dashboard.DashboardCardIds)
+                    .Select(x => DashboardCardDto.FromDashboardCard(x)).ToList();
+                
                 return Task.FromResult(new Response()
                 {
-                    Dashboard = DashboardDto.FromDashboard(dashboard, dashboardCards)
+                    Dashboard = dashboardDto
                 });
 
             }

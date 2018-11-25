@@ -1,11 +1,8 @@
-using LightWeightPerformanceTesting.Core.DomainEvents;
 using LightWeightPerformanceTesting.Core.Identity;
 using LightWeightPerformanceTesting.Core.Interfaces;
 using LightWeightPerformanceTesting.Core.Models;
 using FluentValidation;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
-using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -35,35 +32,44 @@ namespace LightWeightPerformanceTesting.API.Features.Users
         {
             public string AccessToken { get; set; }
             public Guid UserId { get; set; }
+            public IEnumerable<string> Roles { get; set; }
+            public string Username { get; set; }
         }
 
         public class Handler : IRequestHandler<Request, Response>
         {
-            private readonly IEventStore _eventStore;
+            private readonly IRepository _repository;
             private readonly IPasswordHasher _passwordHasher;
             private readonly ISecurityTokenFactory _securityTokenFactory;
 
             public Handler(
-                IEventStore eventStore, 
+                IRepository repository,
                 ISecurityTokenFactory securityTokenFactory, 
                 IPasswordHasher passwordHasher)
             {
-                _eventStore = eventStore;
+                _repository = repository;
                 _securityTokenFactory = securityTokenFactory;
                 _passwordHasher = passwordHasher;
             }
 
             public Task<Response> Handle(Request request, CancellationToken cancellationToken)
             {                                
-                var user = _eventStore.Query<User>("Username",request.Username);
-                
+                var user = _repository.Query<User>().Single(x => x.Username == request.Username);
+
+                var roles = new List<string>();
+
                 if (user.Password != _passwordHasher.HashPassword(user.Salt, request.Password))
                     throw new System.Exception();
 
+                foreach (var roleId in user.RoleIds)
+                    roles.Add(_repository.Query<Role>(roleId).Name);
+
                 return Task.FromResult(new Response()
                 {
-                    AccessToken = _securityTokenFactory.Create(request.Username),
-                    UserId = user.UserId
+                    AccessToken = _securityTokenFactory.Create(user.UserId, request.Username, roles),
+                    UserId = user.UserId,
+                    Roles = roles,
+                    Username = request.Username
                 });
             }            
         }

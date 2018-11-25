@@ -6,6 +6,7 @@ using MediatR;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Linq;
 
 namespace LightWeightPerformanceTesting.API.Features.Dashboards
 {
@@ -32,7 +33,7 @@ namespace LightWeightPerformanceTesting.API.Features.Dashboards
 
             public Task Handle(Request request, CancellationToken cancellationToken)
             {
-                var dashboard = _eventStore.Query<Dashboard>(request.DashboardId);
+                var dashboard = _eventStore.Load<Dashboard>(request.DashboardId);
 
                 dashboard.Remove();
                 

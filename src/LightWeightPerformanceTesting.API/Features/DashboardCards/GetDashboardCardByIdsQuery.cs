@@ -1,13 +1,12 @@
-using MediatR;
-using System.Threading.Tasks;
-using System.Threading;
-using System.Collections.Generic;
-using LightWeightPerformanceTesting.Core.Interfaces;
-using System.Linq;
-using Microsoft.EntityFrameworkCore;
-using LightWeightPerformanceTesting.Core.Models;
-using System;
 using LightWeightPerformanceTesting.API.Features.Cards;
+using LightWeightPerformanceTesting.Core.Interfaces;
+using LightWeightPerformanceTesting.Core.Models;
+using MediatR;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace LightWeightPerformanceTesting.API.Features.DashboardCards
 {
@@ -24,9 +23,9 @@ namespace LightWeightPerformanceTesting.API.Features.DashboardCards
 
         public class Handler : IRequestHandler<Request, Response>
         {
-            private readonly IEventStore _eventStore;
+            private readonly IRepository _repository;
 
-            public Handler(IEventStore eventStore) => _eventStore = eventStore;
+            public Handler(IRepository repository) => _repository = repository;
 
             public Task<Response> Handle(Request request, CancellationToken cancellationToken)
             {
@@ -34,8 +33,8 @@ namespace LightWeightPerformanceTesting.API.Features.DashboardCards
 
                 foreach(var id in request.DashboardCardIds)
                 {
-                    var dashboardCard = DashboardCardDto.FromDashboardCard(_eventStore.Query<DashboardCard>(id));
-                    dashboardCard.Card = CardDto.FromCard(_eventStore.Query<Card>(dashboardCard.CardId));
+                    var dashboardCard = DashboardCardDto.FromDashboardCard(_repository.Query<DashboardCard>(id));
+                    dashboardCard.Card = CardDto.FromCard(_repository.Query<Card>(dashboardCard.CardId));
                     dashboardCards.Add(dashboardCard);
                 }
 

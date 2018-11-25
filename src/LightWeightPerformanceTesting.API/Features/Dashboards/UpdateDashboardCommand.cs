@@ -5,6 +5,7 @@ using MediatR;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
+using System.Linq;
 
 namespace LightWeightPerformanceTesting.API.Features.Dashboards
 {
@@ -22,7 +23,7 @@ namespace LightWeightPerformanceTesting.API.Features.Dashboards
         }
 
         public class Response
-        {			
+        {            
             public Guid DashboardId { get; set; }
         }
 
@@ -30,11 +31,11 @@ namespace LightWeightPerformanceTesting.API.Features.Dashboards
         {
             private readonly IEventStore _eventStore;
             
-			public Handler(IEventStore eventStore) => _eventStore = eventStore;
+            public Handler(IEventStore eventStore) => _eventStore = eventStore;
 
             public Task<Response> Handle(Request request, CancellationToken cancellationToken)
             {
-                var dashboard = _eventStore.Query<Dashboard>(request.Dashboard.DashboardId);
+                var dashboard = _eventStore.Load<Dashboard>(request.Dashboard.DashboardId);
 
                 dashboard.ChangeName(request.Dashboard.Name);
 

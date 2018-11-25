@@ -15,8 +15,8 @@ namespace LightWeightPerformanceTesting.Core.Identity
 
         public async Task Invoke(HttpContext httpContext)
         {
-            var token = _securityTokenFactory.Create("quinntynebrown@gmail.com");
-            httpContext.Request.Headers.Add("Authorization", $"Bearer {token}");
+            //var token = _securityTokenFactory.Create("quinntynebrown@gmail.com");
+            //httpContext.Request.Headers.Add("Authorization", $"Bearer {token}");
             await _next.Invoke(httpContext);            
         }
     }

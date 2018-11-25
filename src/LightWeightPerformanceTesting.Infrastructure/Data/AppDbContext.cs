@@ -1,9 +1,6 @@
-using System.Threading;
-using System.Threading.Tasks;
 using LightWeightPerformanceTesting.Core.Interfaces;
 using LightWeightPerformanceTesting.Core.Models;
 using Microsoft.EntityFrameworkCore;
-using Newtonsoft.Json;
 
 namespace LightWeightPerformanceTesting.Infrastructure.Data
 {
@@ -12,6 +9,7 @@ namespace LightWeightPerformanceTesting.Infrastructure.Data
         public AppDbContext(DbContextOptions options)
             :base(options) { }
 
+        public DbSet<Snapshot> Snapshots { get; set; }
         public DbSet<StoredEvent> StoredEvents { get; set; }
     }
 }

@@ -2,172 +2,129 @@ using LightWeightPerformanceTesting.Core.Common;
 using LightWeightPerformanceTesting.Core.DomainEvents;
 using LightWeightPerformanceTesting.Core.Interfaces;
 using LightWeightPerformanceTesting.Core.Models;
-using MediatR;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reactive.Subjects;
 using System.Runtime.Serialization;
 using System.Threading.Tasks;
-using static LightWeightPerformanceTesting.Infrastructure.Data.DeserializedEventStore;
 using static Newtonsoft.Json.JsonConvert;
 
 namespace LightWeightPerformanceTesting.Infrastructure.Data
 {
-    public static class DeserializedEventStore
-    {
-        public static ConcurrentDictionary<Guid, DeserializedStoredEvent> Events { get; set; }
-    }
-
-    public class DeserializedStoredEvent
-    {
-        public DeserializedStoredEvent(StoredEvent @event)
-        {
-            StoredEventId = @event.StoredEventId;
-            StreamId = @event.StreamId;
-            Type = @event.Type;
-            Aggregate = @event.Aggregate;
-            Data = DeserializeObject(@event.Data, System.Type.GetType(@event.DotNetType));
-            DotNetType = @event.DotNetType;
-            CreatedOn = @event.CreatedOn;
-            Version = @event.Version;
-        }
-
-        public Guid StoredEventId { get; set; }
-        public Guid StreamId { get; set; }
-        public string Type { get; set; }
-        public string Aggregate { get; set; }
-        public object Data { get; set; }
-        public string DotNetType { get; set; }
-        public DateTime CreatedOn { get; set; }
-        public int Version { get; set; }
-    }
-
     public class EventStore : IEventStore
     {
-        private readonly IAppDbContext _context;
-        private readonly IMediator _mediator;
+        private readonly IConfiguration _configuration;
+        private readonly IDateTime _dateTime;
         private readonly IBackgroundTaskQueue _queue;
         private readonly IServiceScopeFactory _serviceScopeFactory;
+        public Subject<EventStoreChanged> _subject = new Subject<EventStoreChanged>();
+
+        public static ConcurrentDictionary<Guid, DeserializedStoredEvent> Events { get; set; }        
 
         public EventStore(
-            IAppDbContext context,
-            IMediator mediator = default(IMediator),
+            IConfiguration configuration,
+            IDateTime dateTime = default(IDateTime),
             IBackgroundTaskQueue queue = default(IBackgroundTaskQueue),
             IServiceScopeFactory serviceScopeFactory = default(IServiceScopeFactory)
             )
         {
-            _context = context;
-            _mediator = mediator;
+            _configuration = configuration;
             _queue = queue;
             _serviceScopeFactory = serviceScopeFactory;
+            _dateTime = dateTime;
         }
 
-        public void Dispose() => _context.Dispose();
+        public async Task<IEnumerable<StoredEvent>> GetEvents() {
+            var storedEvents = default(IEnumerable<StoredEvent>);
 
-        public void Save(Entity entity)
+            using (var scope = _serviceScopeFactory.CreateScope())
+            {
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                storedEvents = context.StoredEvents.OrderBy(x => x.Sequence).ToList();
+            }
+
+            return await Task.FromResult(storedEvents);
+        }
+        
+
+        public void Save(Entity aggregateRoot)
         {
-            var type = entity.GetType();
-
-            foreach (var @event in entity.DomainEvents)
+            var type = aggregateRoot.GetType();
+            Guid aggregateId = (Guid)type.GetProperty($"{type.Name}Id").GetValue(aggregateRoot, null);
+            string aggregate = aggregateRoot.GetType().Name;
+            
+            foreach (var @event in aggregateRoot.DomainEvents)
             {
                 Add(new StoredEvent()
                 {
                     StoredEventId = Guid.NewGuid(),
-                    Aggregate = entity.GetType().Name,
+                    Aggregate = aggregate,
+                    AggregateDotNetType = type.AssemblyQualifiedName,
                     Data = SerializeObject(@event),
-                    StreamId = (Guid)type.GetProperty($"{type.Name}Id").GetValue(entity, null),
+                    StreamId = aggregateId,
                     DotNetType = @event.GetType().AssemblyQualifiedName,
                     Type = @event.GetType().Name,
-                    CreatedOn = DateTime.UtcNow
+                    CreatedOn = DateTime.UtcNow,
+                    Sequence = Get().Count() + 1
                 });
             }
-
-            entity.ClearChanges();
+            aggregateRoot.ClearChanges();
         }
+        
 
-        public T Query<T>(Guid id)
-            where T : Entity
+        public TAggregateRoot Load<TAggregateRoot>(Guid id)
+            where TAggregateRoot : Entity
         {
-            var list = new List<DomainEvent>();
+            var events = Get().Where(x => x.StreamId == id);
 
-            foreach (var storedEvent in Get().Where(x => x.StreamId == id))
-                list.Add(storedEvent.Data as DomainEvent);
+            if (events.Count() == 0) return null;
 
-            return Load<T>(list.ToArray());
-        }
+            var aggregate = (Entity)FormatterServices.GetUninitializedObject(Type.GetType(typeof(TAggregateRoot).AssemblyQualifiedName));
 
-        private T Load<T>(DomainEvent[] events)
-            where T : Entity
-        {
-            var aggregate = (T)FormatterServices.GetUninitializedObject(typeof(T));
-
-            foreach (var @event in events) aggregate.Apply(@event);
+            foreach(var @event in events)
+                aggregate.Apply(@event.Data as DomainEvent);
 
             aggregate.ClearChanges();
 
-            return aggregate;
+            return aggregate as TAggregateRoot;
         }
-
-        public TAggregateRoot Query<TAggregateRoot>(string propertyName, string value)
-            where TAggregateRoot : Entity
+        
+        public List<DeserializedStoredEvent> Get()
         {
-            var storedEvents = Get()
-                .Where(x => {
-                    var prop = Type.GetType(x.DotNetType).GetProperty(propertyName);
-                    return prop != null && $"{prop.GetValue(x.Data, null)}" == value;
-                })
-                .ToArray();
-
-            if (storedEvents.Length < 1) return null;
-
-            return Query<TAggregateRoot>(storedEvents.First().StreamId) as TAggregateRoot;
-        }
-
-        public TAggregateRoot[] Query<TAggregateRoot>()
-            where TAggregateRoot : Entity
-        {
-            var aggregates = new List<TAggregateRoot>();
-
-            foreach (var grouping in Get()
-                .Where(x => x.Aggregate == typeof(TAggregateRoot).Name).GroupBy(x => x.StreamId))
+            using (var scope = _serviceScopeFactory.CreateScope())
             {
-                var events = grouping.Select(x => x.Data as DomainEvent).ToArray();
+                var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-                aggregates.Add(Load<TAggregateRoot>(events.ToArray()));
+                if (Events == null)
+                    Events = new ConcurrentDictionary<Guid, DeserializedStoredEvent>(context.StoredEvents.Select(x => new DeserializedStoredEvent(x)).ToDictionary(x => x.StoredEventId));
+
+                return Events.Select(x => x.Value)
+                    .OrderBy(x => x.CreatedOn)
+                    .ToList();
             }
-
-            return aggregates.ToArray();
-        }
-
-        protected List<DeserializedStoredEvent> Get()
-        {
-            if (Events == null)
-                Events = new ConcurrentDictionary<Guid, DeserializedStoredEvent>(_context.StoredEvents.Select(x => new DeserializedStoredEvent(x)).ToDictionary(x => x.StoredEventId));
-
-            return Events.Select(x => x.Value)
-                .OrderBy(x => x.CreatedOn)
-                .ToList();
         }
 
         protected void Add(StoredEvent @event)
         {
             Events.TryAdd(@event.StoredEventId, new DeserializedStoredEvent(@event));
-            Persist(@event);
-        }
 
-        public void Persist(StoredEvent @event)
-            => _queue.QueueBackgroundWorkItem(async token =>
+            _subject.OnNext(new EventStoreChanged(@event));
+
+            _queue?.QueueBackgroundWorkItem(async token =>
             {
                 using (var scope = _serviceScopeFactory.CreateScope())
-                using (var context = scope.ServiceProvider.GetRequiredService<AppDbContext>())
                 {
+                    var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                     context.StoredEvents.Add(@event);
-                    context.SaveChanges();
+                    await context.SaveChangesAsync(token);
                 }
-
-                await Task.CompletedTask;
             });
+        }
+        
+        public void Subscribe(Action<EventStoreChanged> onNext) => _subject.Subscribe(onNext);        
     }
 }

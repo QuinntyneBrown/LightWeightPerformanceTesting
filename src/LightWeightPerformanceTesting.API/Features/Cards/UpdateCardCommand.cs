@@ -5,6 +5,7 @@ using MediatR;
 using System.Threading.Tasks;
 using System.Threading;
 using System;
+using System.Linq;
 
 namespace LightWeightPerformanceTesting.API.Features.Cards
 {
@@ -22,7 +23,7 @@ namespace LightWeightPerformanceTesting.API.Features.Cards
         }
 
         public class Response
-        {			
+        {            
             public Guid CardId { get; set; }
         }
 
@@ -30,11 +31,11 @@ namespace LightWeightPerformanceTesting.API.Features.Cards
         {
             private readonly IEventStore _eventStore;
             
-			public Handler(IEventStore eventStore) => _eventStore = eventStore;
+            public Handler(IEventStore eventStore) => _eventStore = eventStore;
 
             public Task<Response> Handle(Request request, CancellationToken cancellationToken)
             {
-                var card = _eventStore.Query<Card>(request.Card.CardId);
+                var card = _eventStore.Load<Card>(request.Card.CardId);
 
                 card.ChangeName(request.Card.Name);
 
