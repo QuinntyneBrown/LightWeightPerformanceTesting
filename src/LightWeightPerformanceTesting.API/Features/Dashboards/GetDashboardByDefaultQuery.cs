@@ -32,7 +32,7 @@ namespace LightWeightPerformanceTesting.API.Features.Dashboards
                 var dashboards = _repository.Query<Dashboard>().ToList();
 
                 var dashboard = _repository.Query<Dashboard>()
-                    .Single(x => x.Name == "Default" && x.UserId == request.CurrentUserId);
+                    .Single(x => x.Name == "Default");
 
                 var dashboardDto = DashboardDto.FromDashboard(dashboard);
 

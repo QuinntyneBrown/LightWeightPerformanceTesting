@@ -112,10 +112,13 @@ namespace LightWeightPerformanceTesting.Infrastructure.Data
         {
             Events.TryAdd(@event.StoredEventId, new DeserializedStoredEvent(@event));
 
+            
+
             _subject.OnNext(new EventStoreChanged(@event));
 
             _queue?.QueueBackgroundWorkItem(async token =>
             {
+                
                 using (var scope = _serviceScopeFactory.CreateScope())
                 {
                     var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();

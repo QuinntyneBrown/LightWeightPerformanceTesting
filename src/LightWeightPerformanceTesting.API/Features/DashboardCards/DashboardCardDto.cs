@@ -11,15 +11,23 @@ namespace LightWeightPerformanceTesting.API.Features.DashboardCards
         public Guid DashboardId { get; set; }
         public Guid CardId { get; set; }
         public CardDto Card { get; set; }
-        public OptionsDto Options { get; set; }
-        public static DashboardCardDto FromDashboardCard(DashboardCard dashboardCard)
-            => new DashboardCardDto
+        public dynamic Options { get; set; }
+        public static DashboardCardDto FromDashboardCard(DashboardCard dashboardCard) {
+            var dto = new DashboardCardDto
             {
                 DashboardCardId = dashboardCard.DashboardCardId,
                 DashboardId = dashboardCard.DashboardId,
-                CardId = dashboardCard.CardId,
-                Options = JsonConvert.DeserializeObject<OptionsDto>(dashboardCard.Options)
+                CardId = dashboardCard.CardId
             };
+
+            switch(dashboardCard.CardId) {
+                default:
+                dto.Options = JsonConvert.DeserializeObject<DashboardCardLightWeightPerformanceTestOptionsDto>(dashboardCard.Options);
+                break;
+            }
+
+            return dto;
+        }
 
         public class OptionsDto
         {

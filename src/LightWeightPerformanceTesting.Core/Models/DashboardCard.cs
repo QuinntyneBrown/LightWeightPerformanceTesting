@@ -44,6 +44,15 @@ namespace LightWeightPerformanceTesting.Core.Models
                         dashboardCardOptionsUpdated.Left
                     });
                     break;
+
+                case DashboardCardLightWeightPerformanceTestOptionsUpdated dashboardCardLightWeightPerformanceTestOptionsUpdated:
+                    Options = JsonConvert.SerializeObject(new {
+                        dashboardCardLightWeightPerformanceTestOptionsUpdated.Top,
+                        dashboardCardLightWeightPerformanceTestOptionsUpdated.Height,
+                        dashboardCardLightWeightPerformanceTestOptionsUpdated.Width,
+                        dashboardCardLightWeightPerformanceTestOptionsUpdated.Left
+                    });
+                    break;                    
             }
         }
         

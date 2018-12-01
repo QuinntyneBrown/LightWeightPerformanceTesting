@@ -1,10 +1,15 @@
+using LightWeightPerformanceTesting.Core.Interfaces;
+using LightWeightPerformanceTesting.Infrastructure;
 using LightWeightPerformanceTesting.Infrastructure.Data;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 
 namespace LightWeightPerformanceTesting.API
 {
@@ -12,7 +17,21 @@ namespace LightWeightPerformanceTesting.API
     {
         public static void Main(string[] args)
         {
-            var host = CreateWebHostBuilder().Build();
+            var builder = CreateWebHostBuilder();
+
+            if (args.Contains("ci"))
+            {
+                builder.ConfigureAppConfiguration((builderContext, config) =>
+                {
+                    config
+                    .AddInMemoryCollection(new Dictionary<string, string>
+                    {
+                         { "isCI", "true"}
+                    });
+                });
+            }
+
+            var host = builder.Build();
 
             ProcessDbCommands(args, host);
 
@@ -30,6 +49,7 @@ namespace LightWeightPerformanceTesting.API
             using (var scope = services.CreateScope())
             {
                 var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var dateTime = scope.ServiceProvider.GetRequiredService<IDateTime>();
 
                 if (args.Contains("ci"))
                     args = new string[4] { "dropdb", "migratedb", "seeddb", "stop" };
@@ -43,11 +63,12 @@ namespace LightWeightPerformanceTesting.API
                 if (args.Contains("seeddb"))
                 {
                     context.Database.EnsureCreated();
-                    AppInitializer.Seed(context);            
-                }
-                
-                if (args.Contains("stop"))
-                    Environment.Exit(0);
+                    var eventStore = scope.ServiceProvider.GetRequiredService<IEventStore>();
+                    var repository = scope.ServiceProvider.GetRequiredService<IRepository>();
+                    var queue = scope.ServiceProvider.GetRequiredService<IBackgroundTaskQueue>();
+                    AppInitializer.Seed(dateTime, eventStore, services, repository);
+                    queue.DequeueAsync(default(CancellationToken)).GetAwaiter().GetResult();
+                }                
             }
         }        
     }

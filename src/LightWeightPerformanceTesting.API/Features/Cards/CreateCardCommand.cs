@@ -34,7 +34,7 @@ namespace LightWeightPerformanceTesting.API.Features.Cards
 
             public Task<Response> Handle(Request request, CancellationToken cancellationToken)
             {
-                var card = new Card(request.Card.Name);
+                var card = new Card(request.Card.Name, request.Card.CardType);
 
                 _eventStore.Save(card);
                 
